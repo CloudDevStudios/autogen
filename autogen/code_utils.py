@@ -24,7 +24,7 @@ UNKNOWN = "unknown"
 TIMEOUT_MSG = "Timeout"
 DEFAULT_TIMEOUT = 600
 WIN32 = sys.platform == "win32"
-PATH_SEPARATOR = WIN32 and "\\" or "/"
+PATH_SEPARATOR = "\\" if WIN32 else "/"
 
 logger = logging.getLogger(__name__)
 
@@ -320,7 +320,7 @@ def execute_code(
             logs = result.stderr
             if original_filename is None:
                 abs_path = str(pathlib.Path(filepath).absolute())
-                logs = logs.replace(str(abs_path), "").replace(filename, "")
+                logs = logs.replace(abs_path, "").replace(filename, "")
             else:
                 abs_path = str(pathlib.Path(work_dir).absolute()) + PATH_SEPARATOR
                 logs = logs.replace(str(abs_path), "")
@@ -438,9 +438,7 @@ def _remove_check(response):
     """Remove the check function from the response."""
     # find the position of the check function
     pos = response.find("def check(")
-    if pos == -1:
-        return response
-    return response[:pos]
+    return response if pos == -1 else response[:pos]
 
 
 def eval_function_completions(
@@ -481,7 +479,7 @@ def eval_function_completions(
             success_list.append(success)
         return {
             "expected_success": 1 - pow(1 - sum(success_list) / n, n),
-            "success": any(s for s in success_list),
+            "success": any(success_list),
         }
     if callable(assertions) and n > 1:
         # assertion generator

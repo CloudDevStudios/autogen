@@ -176,7 +176,7 @@ class RetrieveUserProxyAgent(UserProxyAgent):
         )
         self.custom_token_count_function = self._retrieve_config.get("custom_token_count_function", None)
         self._context_max_tokens = self._max_tokens * 0.8
-        self._collection = True if self._docs_path is None else False  # whether the collection is created
+        self._collection = self._docs_path is None
         self._ipython = get_ipython()
         self._doc_idx = -1  # the index of the current used doc
         self._results = {}  # the results of the current query
@@ -199,12 +199,7 @@ class RetrieveUserProxyAgent(UserProxyAgent):
             if message is None:
                 return False
         cb = extract_code(message)
-        contain_code = False
-        for c in cb:
-            # todo: support more languages
-            if c[0] == "python":
-                contain_code = True
-                break
+        contain_code = any(c[0] == "python" for c in cb)
         update_context_case1, update_context_case2 = self._check_update_context(message)
         return not (contain_code or update_context_case1 or update_context_case2)
 
@@ -297,43 +292,46 @@ class RetrieveUserProxyAgent(UserProxyAgent):
             messages = self._oai_messages[sender]
         message = messages[-1]
         update_context_case1, update_context_case2 = self._check_update_context(message)
-        if (update_context_case1 or update_context_case2) and self.update_context:
-            print(colored("Updating context and resetting conversation.", "green"), flush=True)
-            # extract the first sentence in the response as the intermediate answer
-            _message = message.get("content", "").split("\n")[0].strip()
-            _intermediate_info = re.split(r"(?<=[.!?])\s+", _message)
-            self._intermediate_answers.add(_intermediate_info[0])
+        if (
+            not update_context_case1
+            and not update_context_case2
+            or not self.update_context
+        ):
+            return False, None
+        print(colored("Updating context and resetting conversation.", "green"), flush=True)
+        # extract the first sentence in the response as the intermediate answer
+        _message = message.get("content", "").split("\n")[0].strip()
+        _intermediate_info = re.split(r"(?<=[.!?])\s+", _message)
+        self._intermediate_answers.add(_intermediate_info[0])
 
-            if update_context_case1:
-                # try to get more context from the current retrieved doc results because the results may be too long to fit
-                # in the LLM context.
-                doc_contents = self._get_context(self._results)
+        if update_context_case1:
+            # try to get more context from the current retrieved doc results because the results may be too long to fit
+            # in the LLM context.
+            doc_contents = self._get_context(self._results)
 
-                # Always use self.problem as the query text to retrieve docs, but each time we replace the context with the
-                # next similar docs in the retrieved doc results.
-                if not doc_contents:
-                    for _tmp_retrieve_count in range(1, 5):
-                        self._reset(intermediate=True)
-                        self.retrieve_docs(self.problem, self.n_results * (2 * _tmp_retrieve_count + 1))
-                        doc_contents = self._get_context(self._results)
-                        if doc_contents:
-                            break
-            elif update_context_case2:
-                # Use the current intermediate info as the query text to retrieve docs, and each time we append the top similar
-                # docs in the retrieved doc results to the context.
-                for _tmp_retrieve_count in range(5):
+            # Always use self.problem as the query text to retrieve docs, but each time we replace the context with the
+            # next similar docs in the retrieved doc results.
+            if not doc_contents:
+                for _tmp_retrieve_count in range(1, 5):
                     self._reset(intermediate=True)
-                    self.retrieve_docs(_intermediate_info[0], self.n_results * (2 * _tmp_retrieve_count + 1))
-                    self._get_context(self._results)
-                    doc_contents = "\n".join(self._doc_contents)  # + "\n" + "\n".join(self._intermediate_answers)
+                    self.retrieve_docs(self.problem, self.n_results * (2 * _tmp_retrieve_count + 1))
+                    doc_contents = self._get_context(self._results)
                     if doc_contents:
                         break
+        elif update_context_case2:
+            # Use the current intermediate info as the query text to retrieve docs, and each time we append the top similar
+            # docs in the retrieved doc results to the context.
+            for _tmp_retrieve_count in range(5):
+                self._reset(intermediate=True)
+                self.retrieve_docs(_intermediate_info[0], self.n_results * (2 * _tmp_retrieve_count + 1))
+                self._get_context(self._results)
+                doc_contents = "\n".join(self._doc_contents)  # + "\n" + "\n".join(self._intermediate_answers)
+                if doc_contents:
+                    break
 
-            self.clear_history()
-            sender.clear_history()
-            return True, self._generate_message(doc_contents, task=self._task)
-        else:
-            return False, None
+        self.clear_history()
+        sender.clear_history()
+        return True, self._generate_message(doc_contents, task=self._task)
 
     def retrieve_docs(self, problem: str, n_results: int = 20, search_string: str = ""):
         """Retrieve docs based on the given problem and assign the results to the class property `_results`.
@@ -396,8 +394,7 @@ class RetrieveUserProxyAgent(UserProxyAgent):
         self.problem = problem
         self.n_results = n_results
         doc_contents = self._get_context(self._results)
-        message = self._generate_message(doc_contents, self._task)
-        return message
+        return self._generate_message(doc_contents, self._task)
 
     def run_code(self, code, **kwargs):
         lang = kwargs.get("lang", None)
@@ -409,14 +406,13 @@ class RetrieveUserProxyAgent(UserProxyAgent):
             )
         if self._ipython is None or lang != "python":
             return super().run_code(code, **kwargs)
-        else:
-            result = self._ipython.run_cell(code)
-            log = str(result.result)
-            exitcode = 0 if result.success else 1
-            if result.error_before_exec is not None:
-                log += f"\n{result.error_before_exec}"
-                exitcode = 1
-            if result.error_in_exec is not None:
-                log += f"\n{result.error_in_exec}"
-                exitcode = 1
-            return exitcode, log, None
+        result = self._ipython.run_cell(code)
+        log = str(result.result)
+        exitcode = 0 if result.success else 1
+        if result.error_before_exec is not None:
+            log += f"\n{result.error_before_exec}"
+            exitcode = 1
+        if result.error_in_exec is not None:
+            log += f"\n{result.error_in_exec}"
+            exitcode = 1
+        return exitcode, log, None

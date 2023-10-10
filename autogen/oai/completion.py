@@ -313,8 +313,7 @@ class Completion(openai_Completion):
             params["messages"] = cls._messages[config["messages"]]
         if "stop" in params:
             params["stop"] = cls._stops and cls._stops[params["stop"]]
-        temperature_or_top_p = params.pop("temperature_or_top_p", None)
-        if temperature_or_top_p:
+        if temperature_or_top_p := params.pop("temperature_or_top_p", None):
             params.update(temperature_or_top_p)
         if cls._config_list and "config_list" not in params:
             params["config_list"] = cls._config_list
@@ -571,7 +570,7 @@ class Completion(openai_Completion):
                 space["temperature_or_top_p"] = {"temperature": temperature}
             elif temperature is None and top_p is not None:
                 space["temperature_or_top_p"] = {"top_p": top_p}
-            elif temperature is not None and top_p is not None:
+            elif temperature is not None:
                 space.pop("temperature_or_top_p")
                 space["temperature"] = temperature
                 space["top_p"] = top_p
@@ -634,9 +633,7 @@ class Completion(openai_Completion):
                 subspace["best_of"] = space.pop("best_of")
             if "n" in space:
                 subspace["n"] = space.pop("n")
-            choices = []
-            for model in space["model"]:
-                choices.append({"model": model, **subspace})
+            choices = [{"model": model, **subspace} for model in space["model"]]
             space["subspace"] = tune.choice(choices)
             space.pop("model")
             # start all the models with the same hp config
