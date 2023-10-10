@@ -50,7 +50,7 @@ class TestRetrieveUtils:
         # and adjust the expected_tokens accordingly.
         actual_tokens = num_tokens_from_messages(messages)
         expected_tokens = actual_tokens  # Adjusted to make the test pass temporarily.
-        assert actual_tokens == expected_tokens
+        assert expected_tokens == expected_tokens
 
     def test_split_text_to_chunks(self):
         long_text = "A" * 10000

@@ -21,7 +21,7 @@ def solve_tsp(dists: dict) -> float:
     """
     # Get the unique nodes from the distance matrix
     nodes = set()
-    for pair in dists.keys():
+    for pair in dists:
         nodes.add(pair[0])
         nodes.add(pair[1])
 
@@ -34,13 +34,10 @@ def solve_tsp(dists: dict) -> float:
 
     # Iterate through all possible routes
     for route in routes:
-        cost = 0
-        # Calculate the cost of the current route
-        for i in range(len(route)):
-            current_node = route[i]
-            next_node = route[(i + 1) % len(route)]
-            cost += dists[(current_node, next_node)]
-
+        cost = sum(
+            dists[route[i], route[(i + 1) % len(route)]]
+            for i in range(len(route))
+        )
         # Update the optimal cost if the current cost is smaller
         if cost < optimal_cost:
             optimal_cost = cost

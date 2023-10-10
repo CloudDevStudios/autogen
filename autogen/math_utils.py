@@ -50,8 +50,8 @@ def last_boxed_only_string(string: str) -> Optional[str]:
     idx = string.rfind("\\boxed")
     if idx < 0:
         idx = string.rfind("\\fbox")
-        if idx < 0:
-            return None
+    if idx < 0:
+        return None
 
     i = idx
     right_brace_idx = None
@@ -66,12 +66,7 @@ def last_boxed_only_string(string: str) -> Optional[str]:
                 break
         i += 1
 
-    if right_brace_idx is None:
-        retval = None
-    else:
-        retval = string[idx : right_brace_idx + 1]
-
-    return retval
+    return None if right_brace_idx is None else string[idx : right_brace_idx + 1]
 
 
 def _fix_fracs(string: str) -> str:
@@ -95,26 +90,24 @@ def _fix_fracs(string: str) -> str:
                 new_str += substr
             else:
                 try:
-                    if not len(substr) >= 2:
+                    if len(substr) < 2:
                         raise AssertionError
                 except Exception:
                     return string
                 a = substr[0]
                 b = substr[1]
                 if b != "{":
-                    if len(substr) > 2:
-                        post_substr = substr[2:]
-                        new_str += "{" + a + "}{" + b + "}" + post_substr
-                    else:
-                        new_str += "{" + a + "}{" + b + "}"
+                    new_str += (
+                        "{" + a + "}{" + b + "}" + substr[2:]
+                        if len(substr) > 2
+                        else "{" + a + "}{" + b + "}"
+                    )
+                elif len(substr) > 2:
+                    post_substr = substr[2:]
+                    new_str += "{" + a + "}" + b + post_substr
                 else:
-                    if len(substr) > 2:
-                        post_substr = substr[2:]
-                        new_str += "{" + a + "}" + b + post_substr
-                    else:
-                        new_str += "{" + a + "}" + b
-    string = new_str
-    return string
+                    new_str += "{" + a + "}" + b
+    return new_str
 
 
 def _fix_a_slash_b(string: str) -> str:
@@ -131,10 +124,9 @@ def _fix_a_slash_b(string: str) -> str:
     try:
         a = int(a_str)
         b = int(b_str)
-        if not string == "{}/{}".format(a, b):
+        if string != f"{a}/{b}":
             raise AssertionError
-        new_string = "\\frac{" + str(a) + "}{" + str(b) + "}"
-        return new_string
+        return "\\frac{" + str(a) + "}{" + str(b) + "}"
     except Exception:
         return string
 
@@ -144,13 +136,12 @@ def _remove_right_units(string: str) -> str:
     Remove units (on the right).
     "\\text{ " only ever occurs (at least in the val set) when describing units.
     """
-    if "\\text{ " in string:
-        splits = string.split("\\text{ ")
-        if not len(splits) == 2:
-            raise AssertionError
-        return splits[0]
-    else:
+    if "\\text{ " not in string:
         return string
+    splits = string.split("\\text{ ")
+    if len(splits) != 2:
+        raise AssertionError
+    return splits[0]
 
 
 def _fix_sqrt(string: str) -> str:
@@ -221,7 +212,7 @@ def _strip_string(string: str) -> str:
     if len(string) == 0:
         return string
     if string[0] == ".":
-        string = "0" + string
+        string = f"0{string}"
 
     # to consider: get rid of e.g. "k = " or "q = " at beginning
     if len(string.split("=")) == 2:
@@ -256,9 +247,7 @@ def get_answer(solution: Optional[str]) -> Optional[str]:
     if last_boxed is None:
         return None
     answer = remove_boxed(last_boxed)
-    if answer is None:
-        return None
-    return answer
+    return None if answer is None else answer
 
 
 def is_equiv(str1: Optional[str], str2: Optional[str]) -> float:
@@ -342,7 +331,7 @@ def eval_math_responses(responses, solution=None, **args):
     success_vote = is_equiv_chain_of_thought(responses[answer], solution)
     return {
         "expected_success": 1 - pow(1 - sum(success_list) / n, n),
-        "success": any(s for s in success_list),
+        "success": any(success_list),
         "success_vote": success_vote,
         "voted_answer": responses[answer],
         "votes": votes,
